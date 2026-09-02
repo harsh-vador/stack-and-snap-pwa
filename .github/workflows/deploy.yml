@@ -1,0 +1,45 @@
+name: Deploy to GitHub Pages
+
+# Runs on every push to main, and can also be triggered manually from the
+# Actions tab (workflow_dispatch) without needing a new commit.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Least-privilege permissions needed for the official Pages deploy actions.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# If a new push lands while a deploy is still running, cancel the old one
+# instead of queueing -- the newest commit is always what should end up live.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site as Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # The whole repo root is the site -- index.html, manifest.json,
+          # sw.js and icons/ all need to sit next to each other for the
+          # relative paths in this project to resolve correctly.
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

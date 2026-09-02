@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Stack &amp; Snap</title>
+
+<!-- PWA: installable, offline-capable -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#161327">
+<meta name="description" content="Tap to drop. Land it clean. Don't miss. A fast, physics-y block-stacking game.">
+
+<!-- iOS install support (Safari ignores manifest.json for icons/standalone mode) -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Stack & Snap">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
+<!-- favicon / general icons -->
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+
+<!-- social preview -->
+<meta property="og:title" content="Stack & Snap">
+<meta property="og:description" content="Tap to drop. Land it clean. Don't miss.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="icons/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Stack & Snap">
+<meta name="twitter:description" content="Tap to drop. Land it clean. Don't miss.">
+<meta name="twitter:image" content="icons/og-image.png">
+<style>
+  :root{
+    --bg-top:#161327;
+    --bg-bottom:#3a1657;
+    --ink:#f4f1fb;
+    --ink-dim:#b9b0d6;
+    --accent:#ffd166;
+    --good:#06d6a0;
+    --bad:#ef476f;
+    --panel:rgba(20,14,36,0.72);
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    overflow:hidden; overscroll-behavior:none;
+    background:#161327;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    color:var(--ink);
+    touch-action:none;
+    user-select:none;
+  }
+  #wrap{
+    position:fixed; inset:0;
+    display:flex; align-items:center; justify-content:center;
+  }
+  canvas{
+    display:block;
+    width:100%; height:100%;
+  }
+  .hud{
+    position:fixed; top:0; left:0; right:0;
+    padding:max(18px, env(safe-area-inset-top)) 20px 0 20px;
+    display:flex; justify-content:space-between; align-items:flex-start;
+    pointer-events:none;
+    z-index:5;
+  }
+  .hud .score{
+    font-size:42px; font-weight:700; letter-spacing:0.5px;
+    text-shadow:0 2px 12px rgba(0,0,0,0.35);
+    line-height:1;
+  }
+  .hud .sub{
+    font-size:13px; color:var(--ink-dim); font-weight:600;
+    margin-top:4px; letter-spacing:0.3px;
+  }
+  .hud .best{
+    text-align:right; font-size:14px; color:var(--ink-dim); font-weight:600;
+  }
+  .hud .best b{ color:var(--accent); font-size:16px; }
+  .combo{
+    position:fixed; left:50%; top:16%;
+    transform:translate(-50%,0);
+    font-size:20px; font-weight:800; color:var(--accent);
+    opacity:0; pointer-events:none; z-index:6;
+    text-shadow:0 2px 10px rgba(0,0,0,0.4);
+    transition:opacity 0.15s ease;
+  }
+  .overlay{
+    position:fixed; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    z-index:10;
+    background:radial-gradient(ellipse at 50% 30%, rgba(58,22,87,0.35), rgba(10,7,20,0.78));
+    backdrop-filter:blur(2px);
+  }
+  .panel{
+    width:min(86vw, 380px);
+    background:var(--panel);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:24px;
+    padding:34px 28px 28px;
+    text-align:center;
+    box-shadow:0 20px 60px rgba(0,0,0,0.45);
+  }
+  .title{
+    font-size:38px; font-weight:800; letter-spacing:0.5px;
+    margin:0 0 4px 0;
+    background:linear-gradient(135deg, #ffd166, #ef476f 55%, #ff8fa3);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .tagline{
+    font-size:14px; color:var(--ink-dim); margin:0 0 26px 0; font-weight:500;
+  }
+  .stat-row{
+    display:flex; justify-content:center; gap:28px; margin-bottom:26px;
+  }
+  .stat{ text-align:center; }
+  .stat .n{ font-size:28px; font-weight:800; color:var(--ink); }
+  .stat .l{ font-size:11px; color:var(--ink-dim); font-weight:600; letter-spacing:0.4px; text-transform:uppercase; margin-top:2px;}
+  .newbest{
+    display:inline-block; margin-bottom:18px; padding:6px 14px;
+    background:rgba(6,214,160,0.15); color:var(--good);
+    border-radius:100px; font-size:12px; font-weight:700; letter-spacing:0.4px;
+  }
+  button.cta{
+    width:100%; padding:16px; border:none; border-radius:16px;
+    background:linear-gradient(135deg, #ffd166, #f4a261);
+    color:#241206; font-size:17px; font-weight:800;
+    letter-spacing:0.3px;
+    cursor:pointer;
+    box-shadow:0 8px 24px rgba(255,209,102,0.28);
+    transition:transform 0.08s ease;
+  }
+  button.cta:active{ transform:scale(0.97); }
+  .hint{
+    margin-top:16px; font-size:12px; color:var(--ink-dim);
+  }
+  .modrow{
+    display:flex; justify-content:center; gap:10px; margin-top:18px; flex-wrap:wrap;
+  }
+  .modchip{
+    font-size:11px; font-weight:700; padding:5px 10px; border-radius:100px;
+    background:rgba(255,255,255,0.06); color:var(--ink-dim);
+  }
+  .modchip.on{ background:rgba(6,214,160,0.16); color:var(--good); }
+  .hidden{ display:none !important; }
+  #soundBtn{
+    position:fixed; z-index:6; bottom:max(18px, env(safe-area-inset-bottom));
+    right:18px; pointer-events:auto; background:rgba(255,255,255,0.08); border:none;
+    color:var(--ink-dim); font-size:20px; opacity:0.85; width:44px; height:44px;
+    border-radius:100px; display:flex; align-items:center; justify-content:center;
+  }
+  #soundBtn:active{ transform:scale(0.92); }
+  .pause-panel{
+    padding:30px 34px; text-align:center;
+  }
+  #updateToast{
+    position:fixed; left:50%; bottom:max(24px, env(safe-area-inset-bottom));
+    transform:translateX(-50%); background:#1f1733; color:#f4f1fb;
+    padding:12px 12px 12px 18px; border-radius:100px; font-size:13px; font-weight:600;
+    z-index:50; box-shadow:0 10px 30px rgba(0,0,0,0.45);
+    display:flex; gap:10px; align-items:center;
+  }
+  #updateToast button{
+    background:var(--accent); color:#241206; border:none; border-radius:100px;
+    padding:8px 14px; font-weight:800; font-size:12px; cursor:pointer;
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+</div>
+
+<button id="soundBtn" aria-label="Toggle sound">🔊</button>
+
+
+<div class="hud" id="hud">
+  <div>
+    <div class="score" id="scoreVal">0</div>
+    <div class="sub" id="levelVal">Level 1</div>
+  </div>
+  <div class="best">Best<br><b id="bestVal">0</b></div>
+</div>
+<div class="combo" id="comboEl">COMBO x2</div>
+
+<!-- MENU -->
+<div class="overlay" id="menuOverlay">
+  <div class="panel">
+    <div class="title">STACK &amp; SNAP</div>
+    <div class="tagline">Tap to drop. Land it clean. Don't miss.</div>
+    <div class="stat-row">
+      <div class="stat"><div class="n" id="menuBest">0</div><div class="l">Best Score</div></div>
+    </div>
+    <button class="cta" id="startBtn">Tap to Start</button>
+    <div class="hint">One tap drops the block — perfect landings build combos</div>
+  </div>
+</div>
+
+<!-- GAME OVER -->
+<div class="overlay hidden" id="overOverlay">
+  <div class="panel">
+    <div class="title" style="font-size:30px;">TOPPLED</div>
+    <div id="newBestChip" class="newbest hidden">New Best!</div>
+    <div class="stat-row">
+      <div class="stat"><div class="n" id="finalScore">0</div><div class="l">Score</div></div>
+      <div class="stat"><div class="n" id="finalBest">0</div><div class="l">Best</div></div>
+    </div>
+    <button class="cta" id="retryBtn">Try Again</button>
+    <button class="cta" id="shareBtn" style="margin-top:10px; background:rgba(255,255,255,0.08); color:var(--ink); box-shadow:none;">Share Score</button>
+    <div class="modrow" id="modRowOver"></div>
+  </div>
+</div>
+
+<!-- PAUSED -->
+<div class="overlay hidden" id="pauseOverlay">
+  <div class="panel pause-panel">
+    <div class="title" style="font-size:26px;">PAUSED</div>
+    <div class="tagline" style="margin-bottom:0;">Tap anywhere to resume</div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+// ---------- Canvas setup ----------
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+let W = 0, H = 0;
+
+function resize(){
+  const rect = document.getElementById('wrap').getBoundingClientRect();
+  W = rect.width; H = rect.height;
+  canvas.width = Math.floor(W * DPR);
+  canvas.height = Math.floor(H * DPR);
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', ()=>setTimeout(resize,150));
+
+// ---------- Audio (WebAudio beeps, no external assets) ----------
+const SOUND_KEY = 'stackSnapSoundOn_v1';
+let audioCtx = null;
+let soundOn = localStorage.getItem(SOUND_KEY) !== '0';
+
+function updateSoundBtn(){
+  const btn = document.getElementById('soundBtn');
+  btn.textContent = soundOn ? '🔊' : '🔇';
+  btn.setAttribute('aria-label', soundOn ? 'Mute sound' : 'Unmute sound');
+}
+document.getElementById('soundBtn').addEventListener('pointerdown', (e)=>{
+  e.stopPropagation();
+  soundOn = !soundOn;
+  localStorage.setItem(SOUND_KEY, soundOn ? '1' : '0');
+  updateSoundBtn();
+  if(soundOn){ ensureAudio(); if(audioCtx && audioCtx.state==='suspended') audioCtx.resume(); }
+});
+
+function ensureAudio(){
+  if(!audioCtx){
+    try{ audioCtx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ audioCtx = null; }
+  }
+}
+function beep(freq, dur, type, vol){
+  if(!soundOn || !audioCtx) return;
+  const t0 = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type || 'sine';
+  osc.frequency.setValueAtTime(freq, t0);
+  gain.gain.setValueAtTime((vol!=null?vol:0.18), t0);
+  gain.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.start(t0); osc.stop(t0 + dur + 0.02);
+}
+function sfxDrop(){ beep(220,0.08,'sine',0.12); }
+function sfxPerfect(combo){ beep(520 + Math.min(combo,10)*30, 0.14,'triangle',0.2); beep(880 + Math.min(combo,10)*30,0.12,'sine',0.12); }
+function sfxLand(){ beep(180,0.1,'sine',0.15); }
+function sfxTopple(){ beep(110,0.5,'sawtooth',0.18); }
+function vibrate(pattern){ if(navigator.vibrate){ try{ navigator.vibrate(pattern); }catch(e){} } }
+
+// ---------- Utility ----------
+function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+function lerp(a,b,t){ return a + (b-a)*t; }
+function rand(a,b){ return a + Math.random()*(b-a); }
+
+function hueColor(hue, alpha){
+  alpha = (alpha==null)?1:alpha;
+  return `hsla(${hue % 360}, 72%, 60%, ${alpha})`;
+}
+function hueColorDark(hue, alpha){
+  alpha = (alpha==null)?1:alpha;
+  return `hsla(${hue % 360}, 60%, 40%, ${alpha})`;
+}
+
+// ---------- Persistent storage ----------
+const BEST_KEY = 'stackSnapBestScore_v1';
+function getBest(){ return parseInt(localStorage.getItem(BEST_KEY) || '0', 10); }
+function setBest(v){ localStorage.setItem(BEST_KEY, String(v)); }
+
+// ---------- Game constants ----------
+const BASE_BLOCK_H = 46;
+const BASE_BLOCK_W_RATIO = 0.62; // relative to canvas width
+const MIN_BLOCK_W = 26;
+const UNSTABLE_RATIO = 0.22;     // overlap ratio below this => full topple
+const PERFECT_RATIO = 0.92;      // overlap ratio above this => "perfect" combo
+const GRAVITY = 2200;            // px/s^2 (world units, independent of DPR)
+const MODIFIER_TIERS = ['wind','sway','shrink','speedup'];
+
+// ---------- Game state ----------
+let state = 'menu'; // menu | aiming | falling | resolving | topple | gameover
+let score = 0;
+let best = 0;
+let level = 1;
+let combo = 0;
+let timeScale = 1;
+let shakeMag = 0;
+let elapsed = 0; // seconds, drives sway/wind
+
+let stack = [];        // array of {x,y,w,h,hue} , y is WORLD space (0 = ground top), grows negative upward
+let debris = [];        // falling chunks {x,y,w,h,hue,vx,vy,rot,vrot,alpha}
+let particles = [];     // small burst particles
+let cameraY = 0;        // world Y that maps to a fixed screen anchor
+let activeMods = {wind:false, sway:false, shrink:false, speedup:false};
+
+let cur = null; // current block in aiming/falling state
+// cur: {x (left, world), y (world top), w, h, hue, dir, speed, phase:'aiming'|'falling', vy, vx}
+
+const GROUND_H = 40;
+
+function worldToScreenY(wy){
+  // screen anchor: keep the current top-of-stack near 62% of screen height
+  return (wy - cameraY) ;
+}
+
+function resetGame(){
+  score = 0; level = 1; combo = 0; timeScale = 1; shakeMag = 0; elapsed = 0;
+  activeMods = {wind:false, sway:false, shrink:false, speedup:false};
+  stack = [];
+  debris = [];
+  particles = [];
+
+  const baseW = Math.min(W * BASE_BLOCK_W_RATIO, 260);
+  const baseX = W/2 - baseW/2;
+  // ground/base block sits at world y = 0 (top surface at y=0), extends down GROUND_H
+  stack.push({x:baseX, y:0, w:baseW, h:GROUND_H, hue:200, settle:0, settleV:0});
+
+  cameraY = -(H*0.38); // so that base sits near lower part of screen initially
+  spawnNextBlock();
+}
+
+function currentTopBlock(){ return stack[stack.length-1]; }
+
+function spawnNextBlock(){
+  const top = currentTopBlock();
+  let w = top.w;
+  if(activeMods.shrink){
+    w = w * 0.985; // gentle continuous shrink pressure
+  }
+  w = Math.max(MIN_BLOCK_W, w);
+  const h = BASE_BLOCK_H;
+  const hue = (top.hue + rand(24,46));
+  let speed = lerp(140, 260, clamp((level-1)/40,0,1));
+  if(activeMods.speedup) speed *= 1.5;
+
+  const margin = 18;
+  const travel = Math.max(40, W - w - margin*2);
+  const startX = margin + Math.random()*travel;
+
+  cur = {
+    x: startX,
+    y: top.y - 260, // hover above the current top, world space (negative up)
+    w: w, h: h, hue: hue,
+    dir: Math.random() < 0.5 ? -1 : 1,
+    speed: speed,
+    phase: 'aiming',
+    vy: 0,
+    vx: 0,
+    boundsMin: margin,
+    boundsMax: margin + travel
+  };
+  state = 'aiming';
+}
+
+function updateModifiers(){
+  const tier = Math.floor((level-1)/10); // 0 before level 11
+  activeMods.wind = tier >= 1;
+  activeMods.sway = tier >= 2;
+  activeMods.shrink = tier >= 3;
+  activeMods.speedup = tier >= 4;
+}
+
+// ---------- Input ----------
+let prePauseState = null;
+
+function onTap(){
+  ensureAudio();
+  if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+
+  if(state === 'paused'){
+    hideOverlay('pauseOverlay');
+    state = prePauseState || 'aiming';
+    prePauseState = null;
+    return;
+  }
+  if(state === 'menu'){
+    resetGame();
+    showHud(true);
+    hideOverlay('menuOverlay');
+    return;
+  }
+  if(state === 'gameover'){
+    return; // retry handled by button explicitly to avoid double trigger
+  }
+  if(state === 'aiming' && cur){
+    // lock in: begin falling
+    cur.phase = 'falling';
+    cur.vy = 40;
+    if(activeMods.wind){
+      cur.vx = rand(-90,90) * (1 + Math.floor((level-1)/10 -1)*0.15);
+    }
+    state = 'falling';
+    sfxDrop();
+  }
+}
+
+canvas.addEventListener('pointerdown', (e)=>{ e.preventDefault(); onTap(); }, {passive:false});
+document.addEventListener('touchstart', (e)=>{ if(e.target.closest('.panel')) return; }, {passive:true});
+document.getElementById('pauseOverlay').addEventListener('pointerdown', (e)=>{ e.stopPropagation(); onTap(); });
+
+// Pause active play when the tab/app is backgrounded, so a block mid-fall
+// doesn't land (or miss) while the player isn't even looking.
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden){
+    if(state === 'aiming' || state === 'falling'){
+      prePauseState = state;
+      state = 'paused';
+    }
+  } else if(state === 'paused'){
+    showOverlay('pauseOverlay');
+  }
+});
+
+// ---------- Placement resolution ----------
+function resolveLanding(){
+  const below = stack[stack.length-1];
+  let swayOffset = 0;
+  if(activeMods.sway){
+    swayOffset = Math.sin(elapsed*0.9) * Math.min(28, 6 + level*0.4);
+  }
+  const belowX0 = below.x + swayOffset;
+  const belowX1 = below.x + below.w + swayOffset;
+  const curX0 = cur.x;
+  const curX1 = cur.x + cur.w;
+
+  const overlapStart = Math.max(belowX0, curX0);
+  const overlapEnd = Math.min(belowX1, curX1);
+  const overlapW = overlapEnd - overlapStart;
+  const ratio = overlapW / cur.w;
+
+  const landY = below.y - cur.h;
+
+  if(overlapW <= 0){
+    // total miss
+    triggerTopple(cur.x, landY, cur.w, cur.h, cur.hue, true);
+    return;
+  }
+  if(ratio < UNSTABLE_RATIO){
+    // unstable - place it visually then topple the tower
+    triggerTopple(overlapStart, landY, overlapW, cur.h, cur.hue, false);
+    return;
+  }
+
+  // successful placement -- trim to overlap, spawn debris for leftovers
+  const leftLeft = curX0, leftRight = overlapStart;
+  const rightLeft = overlapEnd, rightRight = curX1;
+  if(leftRight - leftLeft > 1){
+    spawnDebris(leftLeft, landY, leftRight-leftLeft, cur.h, cur.hue, -1);
+  }
+  if(rightRight - rightLeft > 1){
+    spawnDebris(rightLeft, landY, rightRight-rightLeft, cur.h, cur.hue, 1);
+  }
+
+  const placed = {x:overlapStart, y:landY, w:overlapW, h:cur.h, hue:cur.hue, settle:1, settleV:0};
+  stack.push(placed);
+
+  const isPerfect = ratio >= PERFECT_RATIO;
+  if(isPerfect){
+    combo += 1;
+    score += 1 + combo;
+    spawnBurst(overlapStart + overlapW/2, landY, cur.hue);
+    sfxPerfect(combo);
+    vibrate(18);
+    showCombo();
+  } else {
+    combo = 0;
+    score += 1;
+    sfxLand();
+    vibrate(10);
+  }
+
+  level += 1;
+  updateModifiers();
+  updateHudTexts();
+
+  // camera follow: keep newest block around 58% of screen height
+  const targetCamY = placed.y - H*0.58;
+  cameraTargetY = targetCamY;
+
+  spawnNextBlock();
+}
+
+let cameraTargetY = null;
+
+function triggerTopple(x,y,w,h,hue, isFullMiss){
+  state = 'topple';
+  timeScale = 0.3;
+  shakeMag = 14;
+  sfxTopple();
+  vibrate([0,40,30,60]);
+
+  // the current block tumbles away
+  debris.push({
+    x:x, y:y, w:w, h:h, hue:hue,
+    vx: rand(-60,60), vy:-40, rot:0, vrot: rand(-4,4), alpha:1, gravity:true
+  });
+
+  // if unstable (not a full miss), a couple of top stack blocks also come loose for drama
+  if(!isFullMiss){
+    const n = Math.min(2, stack.length-1);
+    for(let i=0;i<n;i++){
+      const b = stack.pop();
+      if(!b) break;
+      debris.push({
+        x:b.x, y:b.y, w:b.w, h:b.h, hue:b.hue,
+        vx: rand(-50,50)* (i%2===0?1:-1), vy:-30, rot:0, vrot: rand(-3,3), alpha:1, gravity:true
+      });
+    }
+  }
+
+  toppleTimer = 0;
+  cur = null;
+}
+let toppleTimer = 0;
+const TOPPLE_DURATION = 1.5;
+
+function endGame(){
+  state = 'gameover';
+  timeScale = 1;
+  best = Math.max(best, score);
+  const isNew = score > 0 && score >= getBest() && score > 0;
+  const prevBest = getBest();
+  const newBest = score > prevBest;
+  if(newBest) setBest(score);
+  document.getElementById('finalScore').textContent = String(score);
+  document.getElementById('finalBest').textContent = String(getBest());
+  document.getElementById('bestVal').textContent = String(getBest());
+  document.getElementById('newBestChip').classList.toggle('hidden', !newBest);
+
+  const modRow = document.getElementById('modRowOver');
+  modRow.innerHTML = '';
+  MODIFIER_TIERS.forEach(m=>{
+    const on = activeMods[m];
+    const span = document.createElement('span');
+    span.className = 'modchip' + (on ? ' on' : '');
+    span.textContent = labelFor(m);
+    modRow.appendChild(span);
+  });
+
+  showOverlay('overOverlay');
+}
+function labelFor(m){
+  if(m==='wind') return 'Wind';
+  if(m==='sway') return 'Sway';
+  if(m==='shrink') return 'Shrink';
+  if(m==='speedup') return 'Speed+';
+  return m;
+}
+
+// ---------- Debris / particles ----------
+function spawnDebris(x,y,w,h,hue,dir){
+  debris.push({
+    x:x, y:y, w:w, h:h, hue:hue,
+    vx: dir*rand(40,90), vy:-20, rot:0, vrot: dir*rand(2,5), alpha:1, gravity:true
+  });
+}
+function spawnBurst(x,y,hue){
+  const n = 16;
+  for(let i=0;i<n;i++){
+    const a = (Math.PI*2*i)/n + rand(-0.2,0.2);
+    const spd = rand(90,220);
+    particles.push({
+      x:x, y:y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd*0.6 - 60,
+      life:1, hue: hue + rand(-20,20), size: rand(3,6)
+    });
+  }
+}
+
+// ---------- Combo UI ----------
+let comboHideTimer = null;
+function showCombo(){
+  const el = document.getElementById('comboEl');
+  if(combo < 2){ el.style.opacity = 0; return; }
+  el.textContent = 'COMBO x' + combo;
+  el.style.opacity = 1;
+  if(comboHideTimer) clearTimeout(comboHideTimer);
+  comboHideTimer = setTimeout(()=>{ el.style.opacity = 0; }, 700);
+}
+
+// ---------- HUD helpers ----------
+function updateHudTexts(){
+  document.getElementById('scoreVal').textContent = String(score);
+  document.getElementById('levelVal').textContent = 'Level ' + level;
+}
+function showHud(v){ document.getElementById('hud').style.display = v ? 'flex' : 'none'; }
+function showOverlay(id){ document.getElementById(id).classList.remove('hidden'); }
+function hideOverlay(id){ document.getElementById(id).classList.add('hidden'); }
+
+// ---------- Update loop ----------
+let lastT = null;
+function update(dtRaw){
+  const dt = dtRaw * timeScale;
+  elapsed += dtRaw;
+
+  // ease timeScale back to 1 while toppling long enough, handled in topple branch
+  if(shakeMag > 0){ shakeMag = Math.max(0, shakeMag - dtRaw*40); }
+
+  if(cameraTargetY != null){
+    cameraY = lerp(cameraY, cameraTargetY, Math.min(1, dtRaw*6));
+    if(Math.abs(cameraY-cameraTargetY) < 0.5) cameraY = cameraTargetY;
+  }
+
+  if(state === 'aiming' && cur){
+    cur.x += cur.dir * cur.speed * dt;
+    if(cur.x < cur.boundsMin){ cur.x = cur.boundsMin; cur.dir = 1; }
+    if(cur.x > cur.boundsMax){ cur.x = cur.boundsMax; cur.dir = -1; }
+  }
+
+  if(state === 'falling' && cur){
+    cur.vy += GRAVITY * dt;
+    cur.y += cur.vy * dt;
+    if(activeMods.wind){ cur.x += cur.vx * dt; }
+    const below = stack[stack.length-1];
+    const landY = below.y - cur.h;
+    if(cur.y >= landY){
+      cur.y = landY;
+      resolveLanding();
+    }
+  }
+
+  if(state === 'topple'){
+    toppleTimer += dtRaw;
+    if(toppleTimer > TOPPLE_DURATION){
+      timeScale = 1;
+      endGame();
+    }
+  }
+
+  // settle spring animation for placed blocks
+  for(let i=0;i<stack.length;i++){
+    const b = stack[i];
+    if(b.settle !== undefined && b.settle !== 0 || (b.settleV && Math.abs(b.settleV) > 0.001)){
+      // spring toward 0
+      const k = 90, damp = 9;
+      const accel = -k*b.settle - damp*b.settleV;
+      b.settleV += accel*dt;
+      b.settle += b.settleV*dt;
+      if(Math.abs(b.settle) < 0.001 && Math.abs(b.settleV) < 0.001){ b.settle = 0; b.settleV = 0; }
+    }
+  }
+
+  // debris physics
+  for(let i=debris.length-1;i>=0;i--){
+    const d = debris[i];
+    d.vy += GRAVITY*0.9*dt;
+    d.x += d.vx*dt;
+    d.y += d.vy*dt;
+    d.rot += d.vrot*dt;
+    d.alpha -= dt*0.35;
+    if(d.alpha <= 0 || worldToScreenY(d.y) > H + 200){
+      debris.splice(i,1);
+    }
+  }
+
+  // particles
+  for(let i=particles.length-1;i>=0;i--){
+    const p = particles[i];
+    p.vy += 600*dt;
+    p.x += p.vx*dt;
+    p.y += p.vy*dt;
+    p.life -= dt*1.6;
+    if(p.life <= 0) particles.splice(i,1);
+  }
+}
+
+// ---------- Render ----------
+function drawBackground(){
+  const g = ctx.createLinearGradient(0,0,0,H);
+  const hueShift = (level*3) % 360;
+  g.addColorStop(0, `hsl(${250+hueShift*0.15}, 45%, 14%)`);
+  g.addColorStop(1, `hsl(${280+hueShift*0.2}, 55%, 22%)`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,W,H);
+
+  // soft glow behind stack
+  const topScreenY = worldToScreenY(currentTopBlock() ? currentTopBlock().y : 0);
+  const rg = ctx.createRadialGradient(W/2, topScreenY, 10, W/2, topScreenY, Math.max(W,H)*0.6);
+  rg.addColorStop(0, 'rgba(255,255,255,0.06)');
+  rg.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = rg;
+  ctx.fillRect(0,0,W,H);
+}
+
+function drawBlock(x,y,w,h,hue,settle, alpha){
+  settle = settle || 0;
+  alpha = (alpha==null)?1:alpha;
+  const sy = worldToScreenY(y);
+  const cx = x + w/2;
+  const cy = sy + h/2;
+  const squash = clamp(settle, -0.5, 0.5);
+  const scaleY = 1 - squash*0.6;
+  const scaleX = 1 + squash*0.6;
+
+  ctx.save();
+  ctx.translate(cx,cy);
+  ctx.scale(scaleX, scaleY);
+  ctx.translate(-cx,-cy);
+
+  const r = Math.min(10, h*0.28, w*0.28);
+  ctx.globalAlpha = alpha;
+
+  const grad = ctx.createLinearGradient(x, sy, x, sy+h);
+  grad.addColorStop(0, hueColor(hue, 1));
+  grad.addColorStop(1, hueColorDark(hue, 1));
+  ctx.fillStyle = grad;
+
+  roundRect(ctx, x, sy, w, h, r);
+  ctx.fill();
+
+  ctx.globalAlpha = alpha*0.35;
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  roundRect(ctx, x+2, sy+2, Math.max(0,w-4), Math.max(0,h*0.28), r*0.6);
+  ctx.fill();
+
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+function roundRect(ctx,x,y,w,h,r){
+  r = Math.max(0, Math.min(r, w/2, h/2));
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+
+function drawDebris(){
+  debris.forEach(d=>{
+    const sy = worldToScreenY(d.y);
+    ctx.save();
+    ctx.globalAlpha = clamp(d.alpha,0,1);
+    ctx.translate(d.x + d.w/2, sy + d.h/2);
+    ctx.rotate(d.rot);
+    ctx.fillStyle = hueColor(d.hue,1);
+    roundRect(ctx, -d.w/2, -d.h/2, d.w, d.h, Math.min(8,d.h*0.3));
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
+function drawParticles(){
+  particles.forEach(p=>{
+    const sy = worldToScreenY(p.y);
+    ctx.save();
+    ctx.globalAlpha = clamp(p.life,0,1);
+    ctx.fillStyle = hueColor(p.hue,1);
+    ctx.beginPath();
+    ctx.arc(p.x, sy, p.size, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
+function drawAimGuide(){
+  if(state !== 'aiming' || !cur) return;
+  const below = stack[stack.length-1];
+  let swayOffset = 0;
+  if(activeMods.sway) swayOffset = Math.sin(elapsed*0.9) * Math.min(28, 6 + level*0.4);
+  const sy = worldToScreenY(below.y);
+  ctx.save();
+  ctx.globalAlpha = 0.22;
+  ctx.setLineDash([4,6]);
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(below.x+swayOffset, sy);
+  ctx.lineTo(below.x+below.w+swayOffset, sy);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function render(){
+  ctx.clearRect(0,0,W,H);
+
+  let shakeX = 0, shakeY = 0;
+  if(shakeMag > 0){
+    shakeX = rand(-shakeMag, shakeMag);
+    shakeY = rand(-shakeMag, shakeMag);
+  }
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  drawBackground();
+  drawAimGuide();
+
+  let swayOffset = 0;
+  if(activeMods.sway) swayOffset = Math.sin(elapsed*0.9) * Math.min(28, 6 + level*0.4);
+
+  for(let i=0;i<stack.length;i++){
+    const b = stack[i];
+    const wobbleSway = (i === stack.length-1) ? swayOffset : swayOffset*0.6;
+    drawBlock(b.x+wobbleSway, b.y, b.w, b.h, b.hue, b.settle, 1);
+  }
+
+  drawDebris();
+  drawParticles();
+
+  if(cur && (state==='aiming' || state==='falling')){
+    drawBlock(cur.x, cur.y, cur.w, cur.h, cur.hue, 0, 1);
+  }
+
+  ctx.restore();
+}
+
+// ---------- Main loop ----------
+function frame(t){
+  if(lastT == null) lastT = t;
+  let dt = (t - lastT)/1000;
+  lastT = t;
+  dt = Math.min(dt, 1/30); // clamp to avoid big jumps on tab-switch
+
+  if(state !== 'menu' && state !== 'gameover' && state !== 'paused'){
+    update(dt);
+  }
+  render();
+  requestAnimationFrame(frame);
+}
+
+// ---------- Buttons ----------
+document.getElementById('startBtn').addEventListener('click', (e)=>{
+  e.stopPropagation();
+  onTap();
+});
+document.getElementById('retryBtn').addEventListener('click', (e)=>{
+  e.stopPropagation();
+  hideOverlay('overOverlay');
+  resetGame();
+  showHud(true);
+});
+document.getElementById('shareBtn').addEventListener('click', async (e)=>{
+  e.stopPropagation();
+  const btn = e.currentTarget;
+  const text = `I scored ${score} in Stack & Snap \uD83C\uDFD7\uFE0F Can you beat it?`;
+  const shareData = { title: 'Stack & Snap', text, url: location.href };
+  try{
+    if(navigator.share){
+      await navigator.share(shareData);
+      return;
+    }
+  }catch(err){ /* user cancelled or share failed -- fall through to clipboard */ }
+  try{
+    await navigator.clipboard.writeText(`${text} ${location.href}`);
+    const prev = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(()=>{ btn.textContent = prev; }, 1500);
+  }catch(err){ /* clipboard unavailable -- nothing more we can do */ }
+});
+
+// prevent double-fire when tapping overlay buttons from also hitting canvas tap
+['menuOverlay','overOverlay'].forEach(id=>{
+  document.getElementById(id).addEventListener('pointerdown', (e)=>{
+    if(e.target.id !== id) e.stopPropagation();
+  });
+});
+
+// ---------- Init ----------
+function init(){
+  resize();
+  best = getBest();
+  document.getElementById('menuBest').textContent = String(best);
+  document.getElementById('bestVal').textContent = String(best);
+  updateSoundBtn();
+  showHud(false);
+  requestAnimationFrame(frame);
+}
+init();
+
+// Register service worker for offline play + installability.
+// Registration is relative so this works whether the app is hosted at a
+// domain root or a sub-path (e.g. GitHub Pages project sites).
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').then((reg) => {
+      reg.addEventListener('updatefound', () => {
+        const installing = reg.installing;
+        if (!installing) return;
+        installing.addEventListener('statechange', () => {
+          // A new SW finished installing *and* an old one was already
+          // controlling this page -- that means it's an update, not the
+          // very first install, so it's worth telling the player.
+          if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+            showUpdateToast();
+          }
+        });
+      });
+    }).catch((err) => {
+      console.warn('Service worker registration failed:', err);
+    });
+  });
+}
+
+function showUpdateToast(){
+  if (document.getElementById('updateToast')) return;
+  const el = document.createElement('div');
+  el.id = 'updateToast';
+  el.innerHTML = 'Update available <button id="updateReloadBtn">Reload</button>';
+  document.body.appendChild(el);
+  document.getElementById('updateReloadBtn').addEventListener('click', () => {
+    location.reload();
+  });
+}
+
+})();
+</script>
+</body>
+</html>
